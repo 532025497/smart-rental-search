@@ -1,0 +1,432 @@
+/* 智能租房搜索 — 现代化样式 (Lianjia风格简化版) */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --primary: #0099a9;
+  --primary-dark: #007a87;
+  --primary-light: #e6f5f7;
+  --accent: #ff6b35;
+  --bg: #f5f7fa;
+  --card-bg: #ffffff;
+  --text: #2c3e50;
+  --text-light: #6b7c8c;
+  --border: #e1e8ed;
+  --success: #4caf50;
+  --warning: #ff9800;
+  --danger: #e74c3c;
+  --radius: 8px;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+               "PingFang SC", "Hiragino Sans GB",
+               "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+/* ============== Header ============== */
+.app-header {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  color: white;
+  padding: 20px 0;
+  box-shadow: var(--shadow);
+}
+.header-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+.app-header h1 { font-size: 24px; font-weight: 600; }
+.subtitle { font-size: 13px; opacity: 0.9; }
+
+/* ============== Container ============== */
+.container {
+  max-width: 1200px;
+  margin: 24px auto;
+  padding: 0 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ============== Card ============== */
+.card {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  box-shadow: var(--shadow);
+}
+.card h2 {
+  font-size: 16px;
+  margin-bottom: 12px;
+  color: var(--text);
+}
+.hint {
+  font-size: 13px;
+  color: var(--text-light);
+  margin-bottom: 16px;
+}
+
+/* ============== Form ============== */
+.search-form { display: flex; flex-direction: column; gap: 12px; }
+.form-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.form-row label {
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  color: var(--text-light);
+  flex: 1;
+  min-width: 140px;
+}
+.form-row label.checkbox-label {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.form input[type="text"],
+.form input[type="number"] {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 14px;
+  margin-top: 4px;
+}
+.form input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-light);
+}
+
+.form-actions { display: flex; gap: 12px; margin-top: 8px; }
+.btn {
+  padding: 10px 24px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-primary {
+  background: var(--primary);
+  color: white;
+}
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-primary:disabled {
+  background: #b0bec5;
+  cursor: not-allowed;
+}
+.btn-secondary {
+  background: white;
+  color: var(--primary);
+  border: 1px solid var(--primary);
+}
+.btn-secondary:hover { background: var(--primary-light); }
+
+/* ============== Progress ============== */
+.progress-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-light);
+  margin-bottom: 8px;
+}
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--primary-dark));
+  width: 0%;
+  transition: width 0.3s;
+}
+.log-output {
+  background: #1e293b;
+  color: #c2cfd9;
+  padding: 12px;
+  border-radius: 4px;
+  font-family: "Cascadia Code", "Consolas", "Menlo", monospace;
+  font-size: 12px;
+  max-height: 280px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ============== Map ============== */
+.map-container {
+  height: 380px;
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+}
+
+.station-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.station-chip {
+  background: var(--primary-light);
+  color: var(--primary-dark);
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.station-chip .commute {
+  margin-left: 4px;
+  color: var(--text-light);
+}
+
+/* ============== AI Panel ============== */
+.ai-card {
+  background: linear-gradient(135deg, #fffbf0 0%, #fff 100%);
+  border-left: 4px solid var(--accent);
+}
+.ai-content { font-size: 14px; }
+.ai-listing {
+  padding: 12px;
+  background: white;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  border-left: 3px solid var(--accent);
+}
+.ai-listing .title { font-weight: 600; margin-bottom: 4px; }
+.ai-listing .reason {
+  font-size: 12px;
+  color: var(--text-light);
+  margin-top: 4px;
+}
+
+/* ============== Listings ============== */
+.stats-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text-light);
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.stat-item { display: flex; gap: 4px; }
+.stat-item b { color: var(--text); }
+
+.listings { display: flex; flex-direction: column; gap: 12px; }
+.listing {
+  padding: 14px 16px;
+  background: #fafbfc;
+  border-radius: 6px;
+  border-left: 3px solid var(--primary);
+  transition: all 0.2s;
+}
+.listing:hover {
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+.listing.low-confidence { border-left-color: var(--warning); }
+.listing.rejected { border-left-color: var(--danger); opacity: 0.7; }
+
+.listing-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.listing-title {
+  font-weight: 600;
+  font-size: 14px;
+  flex: 1;
+}
+.listing-price {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.listing-price small { font-size: 12px; color: var(--text-light); }
+
+.listing-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-light);
+  margin-bottom: 6px;
+}
+.listing-meta .meta-item {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.listing-meta b { color: var(--text); }
+
+.listing-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.tag {
+  background: var(--primary-light);
+  color: var(--primary-dark);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+}
+.tag.type { background: #e3f2fd; color: #1976d2; }
+.tag.deposit { background: #fff3e0; color: #f57c00; }
+.tag.contact { background: #f3e5f5; color: #7b1fa2; }
+
+.listing-confidence {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.confidence-high { background: #e8f5e9; color: #2e7d32; }
+.confidence-mid { background: #fff8e1; color: #f57c00; }
+.confidence-low { background: #fbe9e7; color: #d84315; }
+
+.listing-highlights {
+  font-size: 12px;
+  color: var(--text-light);
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+}
+
+.listing-link {
+  font-size: 11px;
+  color: var(--primary);
+  text-decoration: none;
+  margin-left: 8px;
+}
+.listing-link:hover { text-decoration: underline; }
+
+/* ============== Error ============== */
+.error-card { border-left: 4px solid var(--danger); }
+.error-message {
+  background: #fbe9e7;
+  color: #c62828;
+  padding: 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+/* ============== Utility ============== */
+.hidden { display: none !important; }
+
+/* ============== Mobile ============== */
+@media (max-width: 680px) {
+  body { font-size: 14px; }
+
+  .app-header { padding: 16px 0; }
+  .header-inner {
+    padding: 0 16px;
+    display: block;
+  }
+  .app-header h1 { font-size: 21px; }
+  .subtitle {
+    display: block;
+    margin-top: 4px;
+    font-size: 12px;
+  }
+
+  .container {
+    margin: 16px auto;
+    padding: 0 12px;
+    gap: 12px;
+  }
+  .card { padding: 16px; }
+  .card h2 { font-size: 15px; }
+  .hint { line-height: 1.65; }
+
+  .search-form { gap: 10px; }
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .form-row label {
+    min-width: 0;
+    width: 100%;
+  }
+  .form-row:first-of-type label:nth-child(2) { grid-column: 1 / -1; }
+  .form-row label.checkbox-label {
+    justify-content: flex-start;
+    align-self: end;
+    min-height: 38px;
+  }
+  .form input[type="text"],
+  .form input[type="number"] {
+    width: 100%;
+    min-width: 0;
+    font-size: 16px;
+  }
+  .form-actions { gap: 10px; }
+  .btn {
+    flex: 1;
+    min-width: 0;
+    padding: 11px 8px;
+    font-size: 13px;
+  }
+
+  .progress-meta { flex-wrap: wrap; }
+  .log-output {
+    max-height: 220px;
+    font-size: 11px;
+  }
+  .map-container {
+    height: 300px;
+    margin-bottom: 12px;
+  }
+  .station-list { gap: 6px; }
+  .station-chip { padding: 4px 8px; }
+
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 12px;
+    font-size: 12px;
+  }
+  .listing { padding: 12px; }
+  .listing-header {
+    display: block;
+    margin-bottom: 8px;
+  }
+  .listing-title { font-size: 14px; }
+  .listing-price { margin-top: 4px; }
+  .listing-meta { gap: 6px 10px; }
+  .listing-highlights { overflow-wrap: anywhere; }
+
+}
+
+@media (max-width: 380px) {
+  .form-row { grid-template-columns: 1fr; }
+  .form-row:first-of-type label:nth-child(2) { grid-column: auto; }
+  .form-actions { flex-direction: column; }
+  .btn { width: 100%; }
+}

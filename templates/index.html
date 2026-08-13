@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>智能租房搜索 — 多Agent Loop系统</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-inner">
+      <h1>🏠 智能租房搜索</h1>
+      <span class="subtitle">多Agent Loop · 规划→开发→评判 协作</span>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- ============== 搜索表单 ============== -->
+    <section class="card search-card">
+      <h2>🔍 第一步: 设定核心约束</h2>
+      <p class="hint">先固定 <b>工作地点</b> + <b>通勤时间</b> + <b>预算</b> 三件事，
+        系统会自动算出可行域，再采集豆瓣租房帖，LLM结构化提取，评判器验证Loop。</p>
+      <form id="search-form" class="search-form">
+        <div class="form-row">
+          <label>城市
+            <input type="text" name="city" value="北京" required>
+          </label>
+          <label>工作地点 (如: 中关村软件园)
+            <input type="text" name="work" placeholder="中关村软件园" required>
+          </label>
+          <label>最大通勤 (分钟)
+            <input type="number" name="commute" value="40" min="10" max="120">
+          </label>
+        </div>
+        <div class="form-row">
+          <label>预算下限 (元/月)
+            <input type="number" name="budget_min" value="3000" min="0">
+          </label>
+          <label>预算上限 (元/月)
+            <input type="number" name="budget_max" value="4500" min="0">
+          </label>
+          <label>最大采集帖数
+            <input type="number" name="max_posts" value="8" min="1" max="30">
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" name="use_stub">
+            <span>Stub模式 (不联网)</span>
+          </label>
+        </div>
+        <div class="form-actions">
+          <button type="submit" id="btn-search" class="btn btn-primary">
+            🚀 开始搜索
+          </button>
+          <button type="button" id="btn-demo" class="btn btn-secondary">
+            📊 查看历史结果
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ============== 进度面板 ============== -->
+    <section id="progress-panel" class="card hidden">
+      <h2>⏳ Loop 执行中...</h2>
+      <div class="progress-meta">
+        <span id="elapsed">0.0s</span> ·
+        <span id="phase-label">初始化</span>
+      </div>
+      <div class="progress-bar">
+        <div id="progress-fill" class="progress-fill"></div>
+      </div>
+      <pre id="logs" class="log-output"></pre>
+    </section>
+
+    <!-- ============== 结果区 ============== -->
+    <section id="results-panel" class="hidden">
+      <!-- 可行域地图 -->
+      <div class="card">
+        <h2>🗺️ 可行域 (通勤可达地铁站)</h2>
+        <div id="map" class="map-container"></div>
+        <div id="station-list" class="station-list"></div>
+      </div>
+
+      <!-- AI推荐面板 -->
+      <div class="card ai-card">
+        <h2>🤖 AI 推荐</h2>
+        <div id="ai-recommendation" class="ai-content">
+          <p class="hint">基于置信度+预算匹配+信息完整度排序的Top房源...</p>
+        </div>
+      </div>
+
+      <!-- 房源列表 -->
+      <div class="card">
+        <h2>📋 房源列表 (<span id="listing-count">0</span>条)</h2>
+        <div class="stats-row" id="stats-row"></div>
+        <div id="listings" class="listings"></div>
+      </div>
+    </section>
+
+    <!-- ============== 错误提示 ============== -->
+    <section id="error-panel" class="card error-card hidden">
+      <h2>❌ 错误</h2>
+      <pre id="error-message" class="error-message"></pre>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
