@@ -48,7 +48,10 @@ from src.listing_store import ListingStore
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.config["MAX_CONTENT_LENGTH"] = 256 * 1024
-LISTING_STORE = ListingStore(os.path.join(DATA_DIR, "rentals.db"))
+LISTING_DB_PATH = os.environ.get(
+    "LISTING_DB_PATH", os.path.join(DATA_DIR, "rentals.db")
+)
+LISTING_STORE = ListingStore(LISTING_DB_PATH)
 
 # 全局任务表 (内存存储, 进程重启清空)
 _JOBS: dict = {}
@@ -256,6 +259,12 @@ def _find_latest_test_result() -> dict:
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/healthz")
+def healthz():
+    """云平台健康检查，不触发外部 API。"""
+    return jsonify({"ok": True})
 
 
 @app.route("/api/demo")
@@ -479,4 +488,4 @@ if __name__ == "__main__":
     print(f"  访问: http://127.0.0.1:{port}")
     print("=" * 50)
 
-    app.run(host="127.0.0.1", port=port, debug=False, threaded=True)
+    app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
