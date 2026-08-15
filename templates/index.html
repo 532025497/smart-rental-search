@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>智能租房搜索 — 多Agent Loop系统</title>
+  <title>智能租房搜索</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
@@ -11,16 +11,13 @@
   <header class="app-header">
     <div class="header-inner">
       <h1>🏠 智能租房搜索</h1>
-      <span class="subtitle">多Agent Loop · 规划→开发→评判 协作</span>
     </div>
   </header>
 
   <main class="container">
     <!-- ============== 搜索表单 ============== -->
     <section class="card search-card">
-      <h2>🔍 第一步: 设定核心约束</h2>
-      <p class="hint">先固定 <b>工作地点</b> + <b>通勤时间</b> + <b>预算</b> 三件事，
-        系统会自动算出可行域，再采集豆瓣租房帖，LLM结构化提取，评判器验证Loop。</p>
+      <h2>🔍 设定找房条件</h2>
       <form id="search-form" class="search-form">
         <div class="form-row">
           <label>城市
@@ -48,6 +45,29 @@
             <span>Stub模式 (不联网)</span>
           </label>
         </div>
+        <div class="form-row compact-row">
+          <label>租期
+            <select name="lease_term">
+              <option value="不限">不限</option>
+              <option value="长租">长租</option>
+              <option value="短租">短租</option>
+            </select>
+          </label>
+          <label>房型
+            <select name="room_type">
+              <option value="不限">不限</option>
+              <option value="整租">整租</option>
+              <option value="合租">合租</option>
+              <option value="单间">单间</option>
+              <option value="主卧">主卧</option>
+              <option value="次卧">次卧</option>
+            </select>
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" name="personal_only" checked>
+            <span>仅个人房源</span>
+          </label>
+        </div>
         <div class="form-actions">
           <button type="submit" id="btn-search" class="btn btn-primary">
             🚀 开始搜索
@@ -59,9 +79,98 @@
       </form>
     </section>
 
+    <section class="card data-workspace">
+      <h2>📥 个人房源库</h2>
+      <div class="workspace-grid">
+        <form id="listing-import-form" class="workspace-panel">
+          <h3>导入房源</h3>
+          <div class="field-grid">
+            <label>城市
+              <input type="text" name="city" value="北京" required>
+            </label>
+            <label>区域 / 地铁站
+              <input type="text" name="area" placeholder="如：大望路" required>
+            </label>
+            <label>月租（可自动识别）
+              <input type="number" name="price_monthly" min="300" max="100000" placeholder="元/月">
+            </label>
+            <label>租期
+              <select name="lease_term">
+                <option value="未知">自动识别</option>
+                <option value="长租">长租</option>
+                <option value="短租">短租</option>
+              </select>
+            </label>
+            <label>房型
+              <select name="room_type">
+                <option value="未知">自动识别</option>
+                <option value="整租">整租</option>
+                <option value="合租">合租</option>
+                <option value="单间">单间</option>
+                <option value="主卧">主卧</option>
+                <option value="次卧">次卧</option>
+              </select>
+            </label>
+            <label>原帖链接
+              <input type="url" name="source_url" placeholder="https://...">
+            </label>
+          </div>
+          <label>房源原文
+            <textarea name="raw_text" rows="6" maxlength="50000" required
+              placeholder="粘贴个人房东、转租或找室友的帖子原文"></textarea>
+          </label>
+          <div class="workspace-actions">
+            <label class="checkbox-label">
+              <input type="checkbox" name="is_personal" checked>
+              <span>标记为个人房源</span>
+            </label>
+            <button type="submit" class="btn btn-primary" id="btn-import">保存房源</button>
+          </div>
+          <div id="import-status" class="inline-status hidden" role="status"></div>
+        </form>
+
+        <form id="price-form" class="workspace-panel">
+          <h3>查询价格参考</h3>
+          <div class="field-grid price-fields">
+            <label>城市
+              <input type="text" name="city" value="北京" required>
+            </label>
+            <label>区域 / 地铁站
+              <input type="text" name="area" placeholder="如：大望路" required>
+            </label>
+            <label>租期
+              <select name="lease_term">
+                <option value="不限">不限</option>
+                <option value="长租">长租</option>
+                <option value="短租">短租</option>
+              </select>
+            </label>
+            <label>房型
+              <select name="room_type">
+                <option value="不限">不限</option>
+                <option value="整租">整租</option>
+                <option value="合租">合租</option>
+                <option value="单间">单间</option>
+                <option value="主卧">主卧</option>
+                <option value="次卧">次卧</option>
+              </select>
+            </label>
+          </div>
+          <div class="workspace-actions">
+            <label class="checkbox-label">
+              <input type="checkbox" name="personal_only" checked>
+              <span>仅统计个人房源</span>
+            </label>
+            <button type="submit" class="btn btn-secondary">查询价格</button>
+          </div>
+          <div id="price-result" class="price-result empty-state">暂无价格样本</div>
+        </form>
+      </div>
+    </section>
+
     <!-- ============== 进度面板 ============== -->
     <section id="progress-panel" class="card hidden">
-      <h2>⏳ Loop 执行中...</h2>
+      <h2>⏳ 搜索执行中...</h2>
       <div class="progress-meta">
         <span id="elapsed">0.0s</span> ·
         <span id="phase-label">初始化</span>
@@ -79,6 +188,13 @@
         <h2>🗺️ 可行域 (通勤可达地铁站)</h2>
         <div id="map" class="map-container"></div>
         <div id="station-list" class="station-list"></div>
+      </div>
+
+      <div class="card">
+        <h2>💰 可达区域价格参考</h2>
+        <div id="market-prices" class="market-prices">
+          <p class="hint">可达区域暂无价格样本</p>
+        </div>
       </div>
 
       <!-- AI推荐面板 -->

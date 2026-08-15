@@ -15,6 +15,9 @@ Endpoints:
     POST /api/search        启动搜索任务 (后台执行Loop)
     GET  /api/status/<jid>  轮询任务进度
     GET  /api/result/<jid>  获取任务最终结果
+    POST /api/listings/import 导入个人房源文本
+    GET  /api/listings       查询本地房源库
+    GET  /api/prices         查询区域价格统计
 """
 import os, sys, json, time, uuid, threading, io, traceback
 from contextlib import redirect_stdout, redirect_stderr
@@ -41,8 +44,11 @@ from src.agents.evaluator import EvaluatorAgent
 from src.loop import RentalSearchLoop
 from src.collectors.douban import DoubanCollector
 from src.models import UserRequirement, Platform, Listing
+from src.listing_store import ListingStore
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
+app.config["MAX_CONTENT_LENGTH"] = 256 * 1024
+LISTING_STORE = ListingStore(os.path.join(DATA_DIR, "rentals.db"))
 
 # 全局任务表 (内存存储, 进程重启清空)
 _JOBS: dict = {}
@@ -130,7 +136,7 @@ def _build_loop_components(use_stub: bool, max_posts: int):
 
 
 def _run_search_job(job_id: str, req: UserRequirement,
-                    use_stub: bool, max_posts: int):
+                    use_stub: bool, max_posts: int, listing_filters: dict):
     """后台线程: 执行完整Loop"""
     with _JOBS_LOCK:
         _JOBS[job_id]["status"] = "running"
@@ -154,6 +160,53 @@ def _run_search_job(job_id: str, req: UserRequirement,
         work_loc = (result.get("plan").work_location
                     if result.get("plan") else {})
 
+        # 将可用的结构化房源写入本地库，再合并符合条件的历史个人房源。
+        for item in listings:
+            if not item.get("price_monthly"):
+                continue
+            try:
+                LISTING_STORE.save({
+                    **item,
+                    "raw_text": item.get("description", ""),
+                    "station": item.get("address_raw", ""),
+                    "listing_type": item.get("rental_subtype", ""),
+                    "is_personal": item.get("rental_subtype") in
+                                   ("转租", "直租", "房东直租", "找室友"),
+                })
+            except ValueError:
+                pass
+
+        station_names = [station["name"] for station in stations]
+        stored_listings = LISTING_STORE.list_for_stations(
+            station_names,
+            city=req.city,
+            lease_term=listing_filters.get("lease_term", ""),
+            room_type=listing_filters.get("room_type", ""),
+            personal_only=listing_filters.get("personal_only", False),
+            budget_min=req.budget_min,
+            budget_max=req.budget_max,
+            recent_days=60,
+        )
+        seen = {(item.get("source_url"), item.get("title")) for item in listings}
+        for item in stored_listings:
+            key = (item.get("source_url"), item.get("title"))
+            if key not in seen:
+                listings.append(item)
+                seen.add(key)
+
+        price_summaries = []
+        for station_name in station_names:
+            summary = LISTING_STORE.price_stats(
+                city=req.city,
+                area=station_name,
+                lease_term=listing_filters.get("lease_term", ""),
+                room_type=listing_filters.get("room_type", ""),
+                personal_only=listing_filters.get("personal_only", False),
+                recent_days=60,
+            )
+            if summary["sample_count"]:
+                price_summaries.append({"area": station_name, **summary})
+
         # 写回job
         with _JOBS_LOCK:
             _JOBS[job_id].update({
@@ -163,6 +216,7 @@ def _run_search_job(job_id: str, req: UserRequirement,
                 "listings": listings,
                 "viable_stations": stations,
                 "work_location": work_loc,
+                "price_summaries": price_summaries,
                 "stats": result["stats"],
                 "criteria": (result["criteria"].rules_description
                              if result.get("criteria") else ""),
@@ -238,6 +292,9 @@ def search():
     budget_max = int(payload.get("budget_max", 0)) or None
     use_stub = bool(payload.get("use_stub", False))
     max_posts = int(payload.get("max_posts", 8))
+    lease_term = (payload.get("lease_term") or "不限").strip()
+    room_type = (payload.get("room_type") or "不限").strip()
+    personal_only = bool(payload.get("personal_only", False))
 
     if not work:
         return jsonify({"ok": False, "error": "工作地点必填"}), 400
@@ -263,13 +320,20 @@ def search():
                         "budget_min": budget_min,
                         "budget_max": budget_max,
                         "use_stub": use_stub,
-                        "max_posts": max_posts},
+                        "max_posts": max_posts,
+                        "lease_term": lease_term,
+                        "room_type": room_type,
+                        "personal_only": personal_only},
             "logs": [],
         }
 
     # 启动后台线程
     t = threading.Thread(target=_run_search_job,
-                         args=(job_id, req, use_stub, max_posts),
+                         args=(job_id, req, use_stub, max_posts, {
+                             "lease_term": lease_term,
+                             "room_type": room_type,
+                             "personal_only": personal_only,
+                         }),
                          daemon=True)
     t.start()
 
@@ -316,10 +380,82 @@ def result(job_id):
         "listings": job.get("listings", []),
         "viable_stations": job.get("viable_stations", []),
         "work_location": job.get("work_location", {}),
+        "price_summaries": job.get("price_summaries", []),
         "stats": job.get("stats", {}),
         "criteria": job.get("criteria", ""),
         "elapsed": job.get("elapsed", 0),
     })
+
+
+@app.route("/api/listings/import", methods=["POST"])
+def import_listing():
+    """保存用户粘贴的个人房源文本；显式字段优先于规则识别。"""
+    payload = request.get_json(force=True) or {}
+    raw_text = str(payload.get("raw_text") or "")
+    if not raw_text.strip():
+        return jsonify({"ok": False, "error": "房源原文必填"}), 400
+    if len(raw_text) > 50000:
+        return jsonify({"ok": False, "error": "房源原文不能超过50000字"}), 400
+    try:
+        item = LISTING_STORE.save(payload)
+        stats = LISTING_STORE.price_stats(
+            city=item["city"],
+            area=item["station"] or item["neighborhood"] or item["district"],
+            lease_term=item["lease_term"],
+            room_type=item["room_type"],
+            personal_only=False,
+            recent_days=60,
+        )
+        return jsonify({"ok": True, "listing": item, "price_stats": stats})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@app.route("/api/listings")
+def local_listings():
+    """按区域、租期、房型和预算查询本地房源库。"""
+    try:
+        items = LISTING_STORE.list(
+            city=(request.args.get("city") or "").strip(),
+            area=(request.args.get("area") or "").strip(),
+            lease_term=(request.args.get("lease_term") or "").strip(),
+            room_type=(request.args.get("room_type") or "").strip(),
+            personal_only=request.args.get("personal_only") in ("1", "true"),
+            budget_min=request.args.get("budget_min") or None,
+            budget_max=request.args.get("budget_max") or None,
+            recent_days=min(max(int(request.args.get("days", 60)), 1), 365),
+            limit=min(max(int(request.args.get("limit", 100)), 1), 500),
+        )
+        return jsonify({"ok": True, "listings": items, "count": len(items)})
+    except (TypeError, ValueError) as exc:
+        return jsonify({"ok": False, "error": f"查询参数无效: {exc}"}), 400
+
+
+@app.route("/api/prices")
+def price_reference():
+    """返回近期区域房源的稳健价格统计。"""
+    try:
+        area = (request.args.get("area") or "").strip()
+        if not area:
+            return jsonify({"ok": False, "error": "区域或地铁站必填"}), 400
+        filters = {
+            "city": (request.args.get("city") or "北京").strip(),
+            "area": area,
+            "lease_term": (request.args.get("lease_term") or "").strip(),
+            "room_type": (request.args.get("room_type") or "").strip(),
+            "personal_only": request.args.get("personal_only") in ("1", "true"),
+            "recent_days": min(max(int(request.args.get("days", 60)), 1), 365),
+        }
+        stats = LISTING_STORE.price_stats(**filters)
+        items = LISTING_STORE.list(limit=20, **filters)
+        return jsonify({
+            "ok": True,
+            "area": area,
+            "stats": stats,
+            "listings": items,
+        })
+    except (TypeError, ValueError) as exc:
+        return jsonify({"ok": False, "error": f"查询参数无效: {exc}"}), 400
 
 
 # ----------------------------------------------------------------

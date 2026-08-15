@@ -6,3 +6,6 @@ __pycache__/
 .DS_Store
 data/e2e_*.json
 data/search_result_*.json
+data/*.db
+data/*.db-shm
+data/*.db-wal

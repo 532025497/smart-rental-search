@@ -22,6 +22,11 @@
   const listingCountEl = $("#listing-count");
   const statsRowEl = $("#stats-row");
   const errorMessageEl = $("#error-message");
+  const listingImportForm = $("#listing-import-form");
+  const priceForm = $("#price-form");
+  const importStatusEl = $("#import-status");
+  const priceResultEl = $("#price-result");
+  const marketPricesEl = $("#market-prices");
 
   let map = null;          // Leaflet map 实例
   let pollTimer = null;    // 轮询定时器
@@ -67,7 +72,7 @@
     const last = logs[logs.length - 1] || "";
     if (last.includes("[Phase 1]")) phaseEl.textContent = "Phase 1: 规划师生成采集计划";
     else if (last.includes("[Phase 2]")) phaseEl.textContent = "Phase 2: 评判器定义验收标准";
-    else if (last.includes("[Phase 3]")) phaseEl.textContent = "Phase 3: 采集→提取→验证Loop";
+    else if (last.includes("[Phase 3]")) phaseEl.textContent = "Phase 3: 采集与房源验证";
     else if (last.includes("[Phase 4]")) phaseEl.textContent = "Phase 4: 排序输出";
     else if (last.includes("通勤计算:")) phaseEl.textContent = "计算精确通勤时间";
     else if (last.includes("统计:")) phaseEl.textContent = "汇总结果";
@@ -106,6 +111,9 @@
       budget_max: parseInt(formData.get("budget_max"), 10),
       max_posts: parseInt(formData.get("max_posts"), 10),
       use_stub: formData.get("use_stub") === "on",
+      lease_term: formData.get("lease_term"),
+      room_type: formData.get("room_type"),
+      personal_only: formData.get("personal_only") === "on",
     };
 
     try {
@@ -118,6 +126,86 @@
       startPolling(currentJobId);
     } catch (e) {
       showError("网络错误: " + e.message);
+    }
+  });
+
+  // ============== 本地房源导入 ==============
+  listingImportForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = $("#btn-import");
+    btn.disabled = true;
+    btn.textContent = "保存中...";
+    hide(importStatusEl);
+    const data = new FormData(listingImportForm);
+    const payload = {
+      city: data.get("city"),
+      area: data.get("area"),
+      price_monthly: data.get("price_monthly"),
+      lease_term: data.get("lease_term"),
+      room_type: data.get("room_type"),
+      source_url: data.get("source_url"),
+      raw_text: data.get("raw_text"),
+      is_personal: data.get("is_personal") === "on",
+      source_platform: "manual",
+    };
+    try {
+      const res = await postJSON("/api/listings/import", payload);
+      show(importStatusEl);
+      importStatusEl.classList.toggle("error", !res.ok);
+      if (!res.ok) {
+        importStatusEl.textContent = res.error || "保存失败";
+        return;
+      }
+      importStatusEl.textContent = res.listing.duplicate
+        ? "已更新重复房源，未新增重复样本"
+        : `已保存：${res.listing.title}`;
+      listingImportForm.elements.raw_text.value = "";
+      listingImportForm.elements.source_url.value = "";
+      renderPriceResult(
+        payload.area,
+        res.price_stats,
+        [res.listing]
+      );
+      priceForm.elements.city.value = payload.city;
+      priceForm.elements.area.value = payload.area;
+      priceForm.elements.lease_term.value = res.listing.lease_term;
+      if ([...priceForm.elements.room_type.options]
+          .some((option) => option.value === res.listing.room_type)) {
+        priceForm.elements.room_type.value = res.listing.room_type;
+      }
+    } catch (err) {
+      show(importStatusEl);
+      importStatusEl.classList.add("error");
+      importStatusEl.textContent = "网络错误: " + err.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "保存房源";
+    }
+  });
+
+  // ============== 独立价格查询 ==============
+  priceForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const data = new FormData(priceForm);
+    const params = new URLSearchParams({
+      city: data.get("city"),
+      area: data.get("area"),
+      lease_term: data.get("lease_term"),
+      room_type: data.get("room_type"),
+      personal_only: data.get("personal_only") === "on" ? "1" : "0",
+      days: "60",
+    });
+    priceResultEl.className = "price-result empty-state";
+    priceResultEl.textContent = "查询中...";
+    try {
+      const res = await getJSON(`/api/prices?${params.toString()}`);
+      if (!res.ok) {
+        priceResultEl.textContent = res.error || "查询失败";
+        return;
+      }
+      renderPriceResult(res.area, res.stats, res.listings || []);
+    } catch (err) {
+      priceResultEl.textContent = "网络错误: " + err.message;
     }
   });
 
@@ -140,6 +228,7 @@
         stats: res.stats,
         elapsed: res.elapsed,
         criteria: "",
+        price_summaries: [],
       });
     } catch (e) {
       showError("网络错误: " + e.message);
@@ -214,11 +303,54 @@
     // 3. 统计
     renderStats(r.stats || {}, r.elapsed);
 
+    renderMarketPrices(r.price_summaries || []);
+
     // 4. AI推荐面板 (Top 3 by confidence)
     renderAIRecommendation(r.listings || []);
 
     // 5. 房源列表
     renderListings(r.listings || []);
+  }
+
+  function renderMarketPrices(items) {
+    if (!items.length) {
+      marketPricesEl.innerHTML = "<p class='hint'>可达区域暂无价格样本</p>";
+      return;
+    }
+    marketPricesEl.innerHTML = items.map((item) => `
+      <div class="market-price-item">
+        <div class="area">${escapeHTML(item.area)}</div>
+        <div class="range">${formatPrice(item.q25)} - ${formatPrice(item.q75)}</div>
+        <div class="sample">中位数 ${formatPrice(item.median)} · ${item.sample_count}条 · ${escapeHTML(item.confidence)}</div>
+      </div>`).join("");
+  }
+
+  function renderPriceResult(area, stats, listings) {
+    if (!stats || !stats.sample_count) {
+      priceResultEl.className = "price-result empty-state";
+      priceResultEl.textContent = `${area || "该区域"} 暂无近60天价格样本`;
+      return;
+    }
+    priceResultEl.className = "price-result";
+    const recent = listings.slice(0, 3).map((item) =>
+      `<div class="price-sample-row">${escapeHTML(item.title)} · ${formatPrice(item.price_monthly)}</div>`
+    ).join("");
+    priceResultEl.innerHTML = `
+      <div class="price-main">
+        <span>${escapeHTML(area)} 中位月租</span>
+        <strong>${formatPrice(stats.median)}</strong>
+      </div>
+      <div class="price-detail">
+        <span>常见区间 ${formatPrice(stats.q25)} - ${formatPrice(stats.q75)}</span>
+        <span>完整范围 ${formatPrice(stats.minimum)} - ${formatPrice(stats.maximum)}</span>
+        <span>近60天 ${stats.sample_count} 条样本</span>
+        <span>可信度 ${escapeHTML(stats.confidence)}</span>
+      </div>
+      ${recent ? `<div class="price-samples">${recent}</div>` : ""}`;
+  }
+
+  function formatPrice(value) {
+    return value == null ? "-" : `${Number(value).toLocaleString("zh-CN")}元`;
   }
 
   // ---- 地图 ----
@@ -251,7 +383,7 @@
       L.marker([s.lat, s.lng], {
         icon: createIcon("📍", "#0099a9"),
       }).addTo(map).bindPopup(
-        `<b>${s.name}</b><br>通勤: ${s.commute_min}分钟<br>` +
+        `<b>${escapeHTML(s.name)}</b><br>通勤: ${s.commute_min}分钟<br>` +
         `距离: ${s.distance_km?.toFixed(1) || "?"}km<br>` +
         `步行: ${s.walking_m || "?"}m<br>换乘: ${s.transfers || 0}次`
       );
@@ -279,7 +411,7 @@
     }
     stationListEl.innerHTML = stations.map((s) => `
       <span class="station-chip">
-        📍 ${s.name}
+        📍 ${escapeHTML(s.name)}
         <span class="commute">${s.commute_min || "?"}min</span>
       </span>`).join("");
   }
@@ -358,9 +490,11 @@
       const price = l.price_monthly ? `${l.price_monthly}<small>元/月</small>` : "?元/月";
 
       const tags = [];
-      if (l.rental_subtype) tags.push(`<span class="tag type">${l.rental_subtype}</span>`);
-      if (l.deposit_method) tags.push(`<span class="tag deposit">${l.deposit_method}</span>`);
-      if (l.room_type) tags.push(`<span class="tag">${l.room_type}</span>`);
+      if (l.rental_subtype) tags.push(`<span class="tag type">${escapeHTML(l.rental_subtype)}</span>`);
+      if (l.deposit_method) tags.push(`<span class="tag deposit">${escapeHTML(l.deposit_method)}</span>`);
+      if (l.room_type) tags.push(`<span class="tag">${escapeHTML(l.room_type)}</span>`);
+      if (l.lease_term && l.lease_term !== "未知") tags.push(`<span class="tag">${escapeHTML(l.lease_term)}</span>`);
+      if (l.is_personal === true) tags.push(`<span class="tag personal">个人房源</span>`);
 
       const meta = [];
       if (l.district || l.neighborhood)
@@ -370,8 +504,9 @@
       if (l.floor) meta.push(`<span class="meta-item">🏢 <b>${escapeHTML(l.floor)}</b></span>`);
       if (l.available_from) meta.push(`<span class="meta-item">📅 <b>${escapeHTML(l.available_from)}</b></span>`);
 
-      const sourceLink = l.source_url
-        ? `<a class="listing-link" href="${l.source_url}" target="_blank">原帖↗</a>`
+      const safeUrl = safeHttpUrl(l.source_url);
+      const sourceLink = safeUrl
+        ? `<a class="listing-link" href="${escapeHTML(safeUrl)}" target="_blank" rel="noopener noreferrer">原帖↗</a>`
         : "";
 
       return `
@@ -400,6 +535,16 @@
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  }
+
+  function safeHttpUrl(value) {
+    if (!value) return "";
+    try {
+      const url = new URL(value, window.location.origin);
+      return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+    } catch (_err) {
+      return "";
+    }
   }
 
   // ============== 初始化 ==============
