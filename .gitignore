@@ -9,3 +9,5 @@ data/search_result_*.json
 data/*.db
 data/*.db-shm
 data/*.db-wal
+# 小红书登录态(cookie), 含敏感凭证, 勿提交
+data/xhs_state.json
